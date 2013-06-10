@@ -1,3 +1,52 @@
+// Expansion for Function
+(function(Function) {
+  if (Function.prototype.bind) {
+    return;
+  }
+  
+  Function.prototype.bind = function(that) {
+    var self = this;
+    return function() {
+      self.apply(that)
+    };
+  };
+})(window.Function);
+
+// Expansion for console
+(function(console) {
+  var slice = Array.prototype.slice;
+  var temp = {
+    log: console.log,
+    error: console.error
+  };
+  
+  function getArgs(args) {
+    args = slice.apply(args);
+    var msg = args[0] || '';
+    
+    if (args.length > 1) {
+      var cnt = 0;
+      msg = msg.replace(/\%d|\%s/g, function() {
+        cnt++;
+        return args[cnt];
+      });
+      if (cnt) {
+        args = [msg];
+      } else {
+        args[0] = msg;
+      }
+    }
+    return args;
+  }
+  console.log = function() {
+    return temp.log.apply(this, getArgs(arguments));
+  };
+  console.error = function() {
+    return temp.error.apply(this, getArgs(arguments));
+  };
+})(window.console);
+
+
 ;(function(){
 
 // CommonJS require()
@@ -5274,7 +5323,10 @@ var clearInterval = window.clearInterval;
 
 var process = {};
 process.exit = function(status){};
-process.stdout = {};
+process.stdout = {
+  write: function(msg) {
+  }
+};
 global = window;
 
 /**
@@ -5302,72 +5354,76 @@ process.on = function(e, fn){
 /**
  * Expose mocha.
  */
-
-var Mocha = window.Mocha = require('mocha'),
-    mocha = window.mocha = new Mocha({ reporter: 'html' });
-
-var immediateQueue = []
-  , immediateTimeout;
-
-function timeslice() {
-  var immediateStart = new Date().getTime();
-  while (immediateQueue.length && (new Date().getTime() - immediateStart) < 100) {
-    immediateQueue.shift()();
+exports.create = function(opts) {
+  var Mocha = window.Mocha = require('mocha'),
+      mocha = window.mocha = new Mocha(opts);
+  
+  var immediateQueue = []
+    , immediateTimeout;
+  
+  function timeslice() {
+    var immediateStart = new Date().getTime();
+    while (immediateQueue.length && (new Date().getTime() - immediateStart) < 100) {
+      immediateQueue.shift()();
+    }
+    if (immediateQueue.length) {
+      immediateTimeout = setTimeout(timeslice, 0);
+    } else {
+      immediateTimeout = null;
+    }
   }
-  if (immediateQueue.length) {
-    immediateTimeout = setTimeout(timeslice, 0);
-  } else {
-    immediateTimeout = null;
-  }
-}
-
-/**
- * High-performance override of Runner.immediately.
- */
-
-Mocha.Runner.immediately = function(callback) {
-  immediateQueue.push(callback);
-  if (!immediateTimeout) {
-    immediateTimeout = setTimeout(timeslice, 0);
-  }
+  
+  /**
+   * High-performance override of Runner.immediately.
+   */
+  
+  Mocha.Runner.immediately = function(callback) {
+    immediateQueue.push(callback);
+    if (!immediateTimeout) {
+      immediateTimeout = setTimeout(timeslice, 0);
+    }
+  };
+  
+  /**
+   * Override ui to ensure that the ui functions are initialized.
+   * Normally this would happen in Mocha.prototype.loadFiles.
+   */
+  
+  mocha.ui = function(ui){
+    Mocha.prototype.ui.call(this, ui);
+    this.suite.emit('pre-require', window, null, this);
+    return this;
+  };
+  
+  /**
+   * Setup mocha with the given setting options.
+   */
+  
+  mocha.setup = function(opts){
+    if ('string' == typeof opts) opts = { ui: opts };
+    for (var opt in opts) this[opt](opts[opt]);
+    return this;
+  };
+  
+  /**
+   * Run mocha, returning the Runner.
+   */
+  
+  mocha.run = function(fn){
+    var options = mocha.options;
+    mocha.globals('location');
+  
+    var query = Mocha.utils.parseQuery(window.location.search || '');
+    if (query.grep) mocha.grep(query.grep);
+    if (query.invert) mocha.invert();
+  
+    return Mocha.prototype.run.call(mocha, function(){
+      Mocha.utils.highlightTags('code');
+      if (fn) fn();
+    });
+  };
+  
+  return mocha;
 };
 
-/**
- * Override ui to ensure that the ui functions are initialized.
- * Normally this would happen in Mocha.prototype.loadFiles.
- */
-
-mocha.ui = function(ui){
-  Mocha.prototype.ui.call(this, ui);
-  this.suite.emit('pre-require', window, null, this);
-  return this;
-};
-
-/**
- * Setup mocha with the given setting options.
- */
-
-mocha.setup = function(opts){
-  if ('string' == typeof opts) opts = { ui: opts };
-  for (var opt in opts) this[opt](opts[opt]);
-  return this;
-};
-
-/**
- * Run mocha, returning the Runner.
- */
-
-mocha.run = function(fn){
-  var options = mocha.options;
-  mocha.globals('location');
-
-  var query = Mocha.utils.parseQuery(window.location.search || '');
-  if (query.grep) mocha.grep(query.grep);
-  if (query.invert) mocha.invert();
-
-  return Mocha.prototype.run.call(mocha, function(){
-    Mocha.utils.highlightTags('code');
-    if (fn) fn();
-  });
-};
 })();
